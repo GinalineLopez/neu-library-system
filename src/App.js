@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { auth, googleProvider, db } from './firebase';
 import { signInWithPopup, onAuthStateChanged } from 'firebase/auth';
+import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import { jsPDF } from "jspdf";
 import "jspdf-autotable";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
