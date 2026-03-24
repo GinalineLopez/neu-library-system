@@ -27,7 +27,6 @@ function App() {
 
   const handleLogVisit = async (e) => {
     e.preventDefault();
-    // Logic for "Admin may block entry"
     const q = query(collection(db, "blocked"), where("email", "==", user.email));
     const blockedSnap = await getDocs(q);
     
@@ -79,12 +78,12 @@ function App() {
       alignItems: 'center',
       fontFamily: 'Arial, sans-serif',
       margin: 0,
-      padding: 0,backgroundSize: 'cover',           // This stretches the image to fill the screen
-      backgroundRepeat: 'no-repeat',     // This stops the image from multiplying
-      backgroundPosition: 'center',      // This centers the photo
+      padding: 0,backgroundSize: 'cover',           
+      backgroundRepeat: 'no-repeat',     
+      backgroundPosition: 'center',      
       overflow: 'hidden'    
     }}>
-      {/* This is the white "Card" in the middle */}
+      {}
       <div style={{ 
         backgroundColor: 'rgba(234, 70, 246, 0.95)', 
         padding: '50px', 
