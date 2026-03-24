@@ -1,195 +1,247 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { auth, googleProvider, db } from './firebase';
 import { signInWithPopup, onAuthStateChanged } from 'firebase/auth';
-import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
-import { jsPDF } from "jspdf";
-import "jspdf-autotable";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { collection, addDoc, getDocs, query, orderBy } from 'firebase/firestore';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
-const ADMIN_EMAIL = "ginaline.lopez@neu.edu.ph";
+const ADMIN_EMAILS = ["ginaline.lopez@neu.edu.ph", "jcesperanza@neu.edu.ph"];
 
 function App() {
   const [user, setUser] = useState(null);
-  const [isAdminMode, setIsAdminMode] = useState(false);
   const [view, setView] = useState('login'); 
   const [logs, setLogs] = useState([]);
-  const [filter, setFilter] = useState({ college: 'All', purpose: 'All', type: 'All' });
-  const [form, setForm] = useState({ college: 'CEA', purpose: 'Reading Books', isEmployee: false });
+  const [countdown, setCountdown] = useState(5);
+  const [form, setForm] = useState({ college: '', purpose: 'Reading', type: '' });
+  
+  const [dateRange, setDateRange] = useState('day'); 
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [adminFilters, setAdminFilters] = useState({ college: 'All', purpose: 'All', type: 'All' });
+
+  const isAdmin = user && ADMIN_EMAILS.includes(user.email);
 
   useEffect(() => {
     onAuthStateChanged(auth, (u) => {
-      if (u) { setUser(u); setView('terminal'); } 
+      if (u) { 
+        setUser(u); 
+        setView('terminal');
+        if (ADMIN_EMAILS.includes(u.email)) fetchLogs();
+      } 
       else { setView('login'); }
     });
   }, []);
+
+  useEffect(() => {
+    let timer;
+    if (view === 'success' && countdown > 0) {
+      timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+    } else if (view === 'success' && countdown === 0) {
+      setView('terminal');
+      setCountdown(5);
+    }
+    return () => clearTimeout(timer);
+  }, [view, countdown]);
+
+  const fetchLogs = async () => {
+    const q = query(collection(db, "visits"), orderBy("timestamp", "desc"));
+    const snap = await getDocs(q);
+    setLogs(snap.docs.map(doc => ({ 
+      ...doc.data(), 
+      id: doc.id, 
+      date: doc.data().timestamp?.toDate() 
+    })));
+  };
 
   const login = () => signInWithPopup(auth, googleProvider);
 
   const handleLogVisit = async (e) => {
     e.preventDefault();
-    const q = query(collection(db, "blocked"), where("email", "==", user.email));
-    const blockedSnap = await getDocs(q);
-    
-    if (!blockedSnap.empty) {
-      alert("ENTRY DENIED: Your account has been blocked by the Admin.");
-      return;
-    }
+    if (!form.type || !form.college) return alert("Please select all fields");
 
     await addDoc(collection(db, "visits"), {
       name: user.displayName,
       email: user.email,
       college: form.college,
       purpose: form.purpose,
-      isEmployee: form.isEmployee,
+      type: form.type,
       timestamp: new Date()
     });
-    alert("Welcome to NEU Library!");
+    setView('success');
+    if (isAdmin) fetchLogs();
   };
 
-  const fetchLogs = async () => {
-    const snap = await getDocs(collection(db, "visits"));
-    setLogs(snap.docs.map(doc => ({ ...doc.data(), id: doc.id })));
-    setView('dashboard');
-  };
+  const filteredData = useMemo(() => {
+    return logs.filter(log => {
+      const logDate = log.date;
+      if (!logDate) return false;
 
-  const filteredLogs = logs.filter(l => 
-    (filter.college === 'All' || l.college === filter.college) &&
-    (filter.purpose === 'All' || l.purpose === filter.purpose) &&
-    (filter.type === 'All' || (filter.type === 'Employee' ? l.isEmployee : !l.isEmployee))
-  );
+      const now = new Date();
+      if (dateRange === 'day') {
+        if (logDate.toDateString() !== now.toDateString()) return false;
+      } else if (dateRange === 'week') {
+        const weekAgo = new Date();
+        weekAgo.setDate(now.getDate() - 7);
+        if (logDate < weekAgo) return false;
+      } else if (dateRange === 'custom' && startDate && endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59);
+        if (logDate < start || logDate > end) return false;
+      }
 
-  const downloadPDF = () => {
-    const doc = new jsPDF();
-    doc.text("NEU Library Visitor Report", 20, 10);
-    doc.autoTable({
-      head: [['Name', 'College', 'Purpose', 'Type']],
-      body: filteredLogs.map(l => [l.name, l.college, l.purpose, l.isEmployee ? 'Employee' : 'Student'])
+      const matchesCollege = adminFilters.college === 'All' || log.college === adminFilters.college;
+      const matchesPurpose = adminFilters.purpose === 'All' || log.purpose === adminFilters.purpose;
+      const matchesType = adminFilters.type === 'All' || 
+                         (adminFilters.type === 'Employee' ? (log.type === 'Teacher' || log.type === 'Staff') : log.type === 'Student');
+
+      return matchesCollege && matchesPurpose && matchesType;
     });
-    doc.save("NEU_Library_Report.pdf");
+  }, [logs, dateRange, startDate, endDate, adminFilters]);
+
+  const colors = { 
+    darkViolet: '#31043d', 
+    lightViolet: '#83069c', 
+    gold: '#4d0f4a', 
+    glass: 'rgba(255, 255, 255, 0.1)',
+    glassDark: 'rgba(0,0,0,0.3)'
+  };
+
+  const containerStyle = { 
+    background: `linear-gradient(180deg, ${colors.lightViolet} 0%, ${colors.darkViolet} 100%)`, 
+    minHeight: '100vh', 
+    padding: '20px', 
+    color: 'white', 
+    fontFamily: 'sans-serif' 
+  };
+
+  const cardStyle = { 
+    background: colors.glass, 
+    backdropFilter: 'blur(10px)', 
+    borderRadius: '15px', 
+    padding: '20px', 
+    marginBottom: '20px', 
+    border: '1px solid rgba(207, 33, 216, 0.1)' 
+  };
+
+  const inputStyle = { 
+    padding: '10px', 
+    borderRadius: '8px', 
+    border: 'none', 
+    marginRight: '10px', 
+    background: 'rgba(196, 31, 31, 0.2)', 
+    color: 'white' 
   };
 
   if (view === 'login') return (
-    <div style={{ 
-      backgroundImage: 'url("purple.jpg")',
-      height: '100vh',
-      width: '100vw',
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      fontFamily: 'Arial, sans-serif',
-      margin: 0,
-      padding: 0,backgroundSize: 'cover',           
-      backgroundRepeat: 'no-repeat',     
-      backgroundPosition: 'center',      
-      overflow: 'hidden'    
-    }}>
-      {}
-      <div style={{ 
-        backgroundColor: 'rgba(234, 70, 246, 0.95)', 
-        padding: '50px', 
-        borderRadius: '15px', 
-        boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-        textAlign: 'center',
-        maxWidth: '400px',
-        width: '90%'
-      }}>
-        <h1 style={{ color: '#22021d', marginBottom: '10px', fontSize: '28px' }}>NEU Library</h1>
-        <p style={{ color: '#333', marginBottom: '30px', fontSize: '18px' }}>Visitor Log System</p>
-        
-        <button 
-          onClick={login} 
-          style={{ 
-            padding: '15px 30px', 
-            fontSize: '18px', 
-            backgroundColor: '#3c004d', 
-            color: 'white', 
-            border: 'none', 
-            borderRadius: '8px', 
-            cursor: 'pointer',
-            fontWeight: 'bold',
-            width: '100%',
-            transition: '0.3s'
-          }}
-          onMouseOver={(e) => e.target.style.backgroundColor = '#220221'}
-          onMouseOut={(e) => e.target.style.backgroundColor = '#d60dcc'}
-        >
-          Login with Google
-        </button>
-      </div>
+    <div style={{...containerStyle, display: 'flex', justifyContent: 'center', alignItems: 'center', textAlign: 'center'}}>
+       <div style={cardStyle}>
+          {}
+          <img src="logo.png" width="80" alt="logo"/>
+          <h2>NEU Library System</h2>
+          <button onClick={login} style={{width: '100%', padding: '15px', background: colors.lightViolet, color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', marginTop: '20px', cursor: 'pointer'}}>Login with Google</button>
+       </div>
     </div>
   );
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
-      <nav style={{ display: 'flex', justifyContent: 'space-between', background: '#800496', color: 'white', padding: '15px', borderRadius: '8px' }}>
-        <h3>NEU Library System</h3>
+    <div style={containerStyle}>
+      <nav style={{display: 'flex', justifyContent: 'space-between', marginBottom: '30px', alignItems: 'center'}}>
+        <h3>NEU Library {view === 'dashboard' ? 'Portal' : 'Terminal'}</h3>
         <div>
-          {user.email === ADMIN_EMAIL && (
-            <button onClick={() => setIsAdminMode(!isAdminMode)} style={{ marginRight: '10px' }}>
-              Switch to {isAdminMode ? 'User' : 'Admin'} Role
+          {isAdmin && (
+            <button onClick={() => setView(view === 'dashboard' ? 'terminal' : 'dashboard')} style={{marginRight: '10px', background: colors.lightViolet, color: 'white', border: 'none', padding: '8px 15px', borderRadius: '5px', cursor: 'pointer'}}>
+              {view === 'dashboard' ? 'Terminal' : 'Admin Portal'}
             </button>
           )}
-          <button onClick={() => setView('terminal')}>Terminal</button>
-          {isAdminMode && <button onClick={fetchLogs}>Dashboard</button>}
-          <button onClick={() => auth.signOut()}>Logout</button>
+          <button onClick={() => auth.signOut()} style={{background: 'rgba(145, 9, 213, 0.5)', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '5px', cursor: 'pointer'}}>Logout</button>
         </div>
       </nav>
 
-      {view === 'terminal' && (
-        <div style={{ maxWidth: '500px', margin: '40px auto', border: '1px solid #270330', padding: '20px', borderRadius: '10px' }}>
-          <h2>Visitor Entry Terminal</h2>
-          <p>Welcome, <b>{user.displayName}</b> ({user.email})</p>
-          <form onSubmit={handleLogVisit}>
-            <label>College/Office:</label>
-            <select style={{width:'100%', marginBottom:'10px'}} onChange={e => setForm({...form, college: e.target.value})}>
-              <option>CEA</option><option>CAS</option><option>COA</option><option>CBA</option><option>CED</option><option>CICS</option>
-            </select>
-            <label>Purpose:</label>
-            <select style={{width:'100%', marginBottom:'10px'}} onChange={e => setForm({...form, purpose: e.target.value})}>
-              <option>Reading Books</option><option>Research in Thesis</option><option>Use of Computer</option><option>Doing Assignments</option>
-            </select>
-            <label>User Type:</label>
-            <select style={{width:'100%', marginBottom:'20px'}} onChange={e => setForm({...form, isEmployee: e.target.value === 'Employee'})}>
-              <option value="Student">Student</option><option value="Employee">Employee (Teacher/Staff)</option>
-            </select>
-            <button type="submit" style={{ width: '100%', padding: '10px', background: '#360640', color: 'white' }}>TAP ID / ENTER</button>
-          </form>
-        </div>
-      )}
-
-      {view === 'dashboard' && isAdminMode && (
-        <div>
-          <h2>Admin Dashboard</h2>
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-            <div style={{ padding: '20px', background: '#e48ef5', borderRadius: '8px', flex: 1 }}>
-              <h4>Total Visitors</h4><p style={{ fontSize: '24px' }}>{filteredLogs.length}</p>
-            </div>
-            <div style={{ padding: '20px', background: '#690974', borderRadius: '8px', flex: 1 }}>
-              <h4>Employees</h4><p style={{ fontSize: '24px' }}>{filteredLogs.filter(l => l.isEmployee).length}</p>
+      {view === 'dashboard' && isAdmin ? (
+        <div style={{maxWidth: '1200px', margin: '0 auto'}}>
+          <div style={cardStyle}>
+            <h4>Statistics Filters</h4>
+            <div style={{display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '10px'}}>
+              <select style={inputStyle} value={dateRange} onChange={e => setDateRange(e.target.value)}>
+                <option value="day">Today</option>
+                <option value="week">Past 7 Days</option>
+                <option value="custom">Custom Range</option>
+              </select>
+              {dateRange === 'custom' && (
+                <>
+                  <input type="date" style={inputStyle} onChange={e => setStartDate(e.target.value)} />
+                  <input type="date" style={inputStyle} onChange={e => setEndDate(e.target.value)} />
+                </>
+              )}
+              <select style={inputStyle} onChange={e => setAdminFilters({...adminFilters, college: e.target.value})}>
+                <option value="All">All Colleges</option>
+                <option>College of Engineering and Technology</option>
+                <option>College of Computer Studies / Informatics</option>
+                <option>College of Business Administration</option>
+              </select>
+              <select style={inputStyle} onChange={e => setAdminFilters({...adminFilters, type: e.target.value})}>
+                <option value="All">All Roles</option>
+                <option value="Student">Students</option>
+                <option value="Employee">Employees (Teacher/Staff)</option>
+              </select>
             </div>
           </div>
 
-          <div style={{ marginBottom: '20px', border: '1px solid #480551', padding: '15px' }}>
-            <h4>Filters</h4>
-            <select onChange={e => setFilter({...filter, college: e.target.value})}>
-              <option>All Colleges</option><option>CEA</option><option>CAS</option><option>COA</option>
-            </select>
-            <select onChange={e => setFilter({...filter, type: e.target.value})}>
-              <option value="All">All Types</option><option value="Student">Student</option><option value="Employee">Employee</option>
-            </select>
-            <button onClick={downloadPDF} style={{ marginLeft: '20px' }}>Download PDF Report</button>
+          <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px'}}>
+            <div style={{...cardStyle, textAlign: 'center', borderBottom: `4px solid ${colors.gold}`}}>
+              <p style={{opacity: 0.7}}>Total Visitors</p>
+              <h1 style={{fontSize: '48px', color: colors.gold}}>{filteredData.length}</h1>
+            </div>
+            <div style={{...cardStyle, textAlign: 'center'}}>
+              <p style={{opacity: 0.7}}>Students</p>
+              <h1 style={{fontSize: '32px'}}>{filteredData.filter(d => d.type === 'Student').length}</h1>
+            </div>
+            <div style={{...cardStyle, textAlign: 'center'}}>
+              <p style={{opacity: 0.7}}>Employees</p>
+              <h1 style={{fontSize: '32px'}}>{filteredData.filter(d => d.type !== 'Student').length}</h1>
+            </div>
           </div>
 
-          <div style={{ height: '300px' }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={filteredLogs}>
-                <XAxis dataKey="college" />
+          <div style={{...cardStyle, height: '350px', marginTop: '20px'}}>
+            <h4>College Distribution</h4>
+            <ResponsiveContainer width="100%" height="90%">
+              <BarChart data={filteredData}>
+                <XAxis dataKey="college" hide />
                 <YAxis />
-                <Tooltip />
-                <Bar dataKey="isEmployee" fill="#2c0433" />
+                <Tooltip contentStyle={{backgroundColor: colors.darkViolet, border: 'none'}} />
+                <Bar dataKey="name" name="Visitors" fill={colors.gold} />
               </BarChart>
             </ResponsiveContainer>
           </div>
+        </div>
+      ) : view === 'success' ? (
+        <div style={{textAlign: 'center', marginTop: '50px'}}>
+           <div style={{...cardStyle, padding: '50px'}}>
+              <h1 style={{color: '#ed0daa'}}>Check-in Successful!</h1>
+              <p>Welcome to NEU Library, <b>{user.displayName}!</b></p>
+              <p style={{opacity: 0.5, marginTop: '20px'}}>Returning to terminal in {countdown}s</p>
+           </div>
+        </div>
+      ) : (
+        <div style={{textAlign: 'center', maxWidth: '450px', margin: '0 auto'}}>
+          <img src={user.photoURL} style={{borderRadius: '50%', width: '80px', border: `3px solid ${colors.gold}`}} alt="profile"/>
+          <h2>Complete Check-In</h2>
+          <form onSubmit={handleLogVisit} style={cardStyle}>
+             <select style={{width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '8px'}} onChange={e => setForm({...form, type: e.target.value})} required>
+                <option value="">Select Role</option>
+                <option>Student</option><option>Teacher</option><option>Staff</option>
+             </select>
+             <select style={{width: '100%', padding: '12px', marginBottom: '15px', borderRadius: '8px'}} onChange={e => setForm({...form, college: e.target.value})} required>
+                <option value="">Select College</option>
+                <option>College of Engineering and Technology</option>
+                <option>College of Computer Studies / Informatics</option>
+                <option>College of Business Administration</option>
+             </select>
+             <select style={{width: '100%', padding: '12px', marginBottom: '20px', borderRadius: '8px'}} onChange={e => setForm({...form, purpose: e.target.value})}>
+                <option>Reading</option><option>Research</option><option>Assignment</option>
+             </select>
+             <button type="submit" style={{width: '100%', padding: '15px', background: colors.lightViolet, color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer'}}>Check In</button>
+          </form>
         </div>
       )}
     </div>
