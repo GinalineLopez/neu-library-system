@@ -134,7 +134,7 @@ function App() {
   if (view === 'login') return (
     <div style={{...containerStyle, display: 'flex', justifyContent: 'center', alignItems: 'center', textAlign: 'center'}}>
        <div style={cardStyle}>
-          <img src="https://upload.wikimedia.org/wikipedia/en/thumb/8/82/New_Era_University_logo.svg/1200px-New_Era_University_logo.svg.png" width="80" alt="logo"/>
+          <img src="logo.png" width="80" alt="logo"/>
           <h2>NEU Library System</h2>
           <button onClick={login} style={{width: '100%', padding: '15px', background: colors.lightViolet, color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', marginTop: '20px', cursor: 'pointer'}}>Login with Google</button>
        </div>
