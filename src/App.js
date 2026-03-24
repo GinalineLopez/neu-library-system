@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { auth, googleProvider, db } from './firebase';
 import { signInWithPopup, onAuthStateChanged } from 'firebase/auth';
 import { collection, addDoc, getDocs, query, orderBy } from 'firebase/firestore';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 const ADMIN_EMAILS = ["ginaline.lopez@neu.edu.ph", "jcesperanza@neu.edu.ph"];
 
@@ -101,9 +101,8 @@ function App() {
   const colors = { 
     darkViolet: '#31043d', 
     lightViolet: '#83069c', 
-    gold: '#4d0f4a', 
-    glass: 'rgba(255, 255, 255, 0.1)',
-    glassDark: 'rgba(0,0,0,0.3)'
+    gold: '#f1c40f', 
+    glass: 'rgba(255, 255, 255, 0.1)'
   };
 
   const containerStyle = { 
@@ -120,7 +119,7 @@ function App() {
     borderRadius: '15px', 
     padding: '20px', 
     marginBottom: '20px', 
-    border: '1px solid rgba(207, 33, 216, 0.1)' 
+    border: '1px solid rgba(255, 255, 255, 0.2)' 
   };
 
   const inputStyle = { 
@@ -128,15 +127,14 @@ function App() {
     borderRadius: '8px', 
     border: 'none', 
     marginRight: '10px', 
-    background: 'rgba(196, 31, 31, 0.2)', 
+    background: 'rgba(255, 255, 255, 0.2)', 
     color: 'white' 
   };
 
   if (view === 'login') return (
     <div style={{...containerStyle, display: 'flex', justifyContent: 'center', alignItems: 'center', textAlign: 'center'}}>
        <div style={cardStyle}>
-          {}
-          <img src="logo.png" width="80" alt="logo"/>
+          <img src="https://upload.wikimedia.org/wikipedia/en/thumb/8/82/New_Era_University_logo.svg/1200px-New_Era_University_logo.svg.png" width="80" alt="logo"/>
           <h2>NEU Library System</h2>
           <button onClick={login} style={{width: '100%', padding: '15px', background: colors.lightViolet, color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', marginTop: '20px', cursor: 'pointer'}}>Login with Google</button>
        </div>
@@ -153,7 +151,7 @@ function App() {
               {view === 'dashboard' ? 'Terminal' : 'Admin Portal'}
             </button>
           )}
-          <button onClick={() => auth.signOut()} style={{background: 'rgba(145, 9, 213, 0.5)', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '5px', cursor: 'pointer'}}>Logout</button>
+          <button onClick={() => auth.signOut()} style={{background: 'rgba(255, 0, 0, 0.5)', color: 'white', border: 'none', padding: '8px 15px', borderRadius: '5px', cursor: 'pointer'}}>Logout</button>
         </div>
       </nav>
 
